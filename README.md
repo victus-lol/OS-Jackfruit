@@ -187,6 +187,8 @@ logs/
 monitor.ko
 engine
 ```
+<img width="877" height="137" alt="image" src="https://github.com/user-attachments/assets/d3cf2a34-5155-4cdb-9480-0c596145a204" />
+
 
 ---
 
