@@ -1,111 +1,204 @@
-# Multi-Container Runtime
+# Mini Container Runtime with Kernel Memory Monitoring
 
-A lightweight Linux container runtime in C with a long-running supervisor and a kernel-space memory monitor.
+##  Overview
 
-Read [`project-guide.md`](project-guide.md) for the full project specification.
+This project implements a lightweight container runtime in Linux using low-level system calls and a kernel module. It demonstrates key operating system concepts such as process isolation, inter-process communication, scheduling, and kernel-level resource monitoring.
+
+The system allows multiple containers to run concurrently under a supervisor while enforcing memory limits using a Loadable Kernel Module (LKM).
 
 ---
 
-## Getting Started
+##  Project Components
 
-### 1. Fork the Repository
+### 1. User-Space Runtime
 
-1. Go to [github.com/shivangjhalani/OS-Jackfruit](https://github.com/shivangjhalani/OS-Jackfruit)
-2. Click **Fork** (top-right)
-3. Clone your fork:
+* **engine.c**
 
-```bash
-git clone https://github.com/<your-username>/OS-Jackfruit.git
-cd OS-Jackfruit
-```
+  * Implements container creation using `clone()`
+  * Supports execution of commands inside containers
+  * Provides CLI interface (`start`, `ps`, `logs`, `stop`)
+  * Communicates with kernel module using `ioctl`
 
-### 2. Set Up Your VM
+### 2. Kernel-Space Monitor
 
-You need an **Ubuntu 22.04 or 24.04** VM with **Secure Boot OFF**. WSL will not work.
+* **monitor.c**
 
-Install dependencies:
+  * Loadable Kernel Module (LKM)
+  * Tracks memory usage of containers
+  * Enforces:
 
-```bash
-sudo apt update
-sudo apt install -y build-essential linux-headers-$(uname -r)
-```
+    * Soft memory limits (warning)
+    * Hard memory limits (process termination)
 
-### 3. Run the Environment Check
+### 3. Shared Interface
 
-```bash
-cd boilerplate
-chmod +x environment-check.sh
-sudo ./environment-check.sh
-```
+* **monitor_ioctl.h**
 
-Fix any issues reported before moving on.
+  * Defines IOCTL commands and data structures
+  * Enables communication between user-space and kernel-space
 
-### 4. Prepare the Root Filesystem
+### 4. Workload Programs
 
-```bash
-mkdir rootfs-base
-wget https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
-tar -xzf alpine-minirootfs-3.20.3-x86_64.tar.gz -C rootfs-base
+* **mem_test.c**
 
-# Make one writable copy per container you plan to run
-cp -a ./rootfs-base ./rootfs-alpha
-cp -a ./rootfs-base ./rootfs-beta
-```
+  * Continuously allocates memory
+  * Used to trigger soft and hard memory limits
 
-Do not commit `rootfs-base/` or `rootfs-*` directories to your repository.
+* **cpu_test.c**
 
-### 5. Understand the Boilerplate
+  * CPU-intensive loop
+  * Used for scheduling experiments
 
-The `boilerplate/` folder contains starter files:
+### 5. Build System
 
-| File                   | Purpose                                             |
-| ---------------------- | --------------------------------------------------- |
-| `engine.c`             | User-space runtime and supervisor skeleton          |
-| `monitor.c`            | Kernel module skeleton                              |
-| `monitor_ioctl.h`      | Shared ioctl command definitions                    |
-| `Makefile`             | Build targets for both user-space and kernel module |
-| `cpu_hog.c`            | CPU-bound test workload                             |
-| `io_pulse.c`           | I/O-bound test workload                             |
-| `memory_hog.c`         | Memory-consuming test workload                      |
-| `environment-check.sh` | VM environment preflight check                      |
+* **Makefile**
 
-Use these as your starting point. You are free to restructure the repository however you want — the submission requirements are listed in the project guide.
+  * Compiles both user-space and kernel-space components using a single command
 
-### 6. Build and Verify
+---
+
+##  Features
+
+* Lightweight container creation using Linux namespaces
+* Multiple container execution
+* Supervisor-based management
+* Kernel-level memory monitoring
+* Soft and hard memory enforcement
+* IOCTL-based communication
+* Logging support
+* Scheduling experiments using `nice`
+
+---
+
+##  Build Instructions
 
 ```bash
-cd boilerplate
+make clean
 make
 ```
 
-If this compiles without errors, your environment is ready.
+---
 
-### 7. GitHub Actions Smoke Check
+##  Execution Steps
 
-Your fork will inherit a minimal GitHub Actions workflow from this repository.
-
-That workflow only performs CI-safe checks:
-
-- `make -C boilerplate ci`
-- user-space binary compilation (`engine`, `memory_hog`, `cpu_hog`, `io_pulse`)
-- `./boilerplate/engine` with no arguments must print usage and exit with a non-zero status
-
-The CI-safe build command is:
+### 1. Load Kernel Module
 
 ```bash
-make -C boilerplate ci
+sudo insmod monitor.ko
 ```
 
-This smoke check does not test kernel-module loading, supervisor runtime behavior, or container execution.
+### 2. Create Device File (if not already present)
+
+```bash
+grep container_monitor /proc/devices
+sudo mknod /dev/container_monitor c <major_number> 0
+sudo chmod 666 /dev/container_monitor
+```
+
+### 3. Start a Container
+
+```bash
+sudo ./engine start c1 /bin/bash
+```
+
+### 4. Run Multiple Containers
+
+```bash
+sudo ./engine start c2 /bin/ls
+sudo ./engine start c3 /bin/date
+```
+
+### 5. View Kernel Logs
+
+```bash
+dmesg | tail
+```
+
+### 6. Stop Container
+
+```bash
+kill <pid>
+```
 
 ---
 
-## What to Do Next
+## Testing
 
-Read [`project-guide.md`](project-guide.md) end to end. It contains:
+### Memory Test
 
-- The six implementation tasks (multi-container runtime, CLI, logging, kernel monitor, scheduling experiments, cleanup)
-- The engineering analysis you must write
-- The exact submission requirements, including what your `README.md` must contain (screenshots, analysis, design decisions)
+```bash
+./mem_test
+```
 
-Your fork's `README.md` should be replaced with your own project documentation as described in the submission package section of the project guide. (As in get rid of all the above content and replace with your README.md)
+* Triggers soft and hard memory limits
+* Observe using:
+
+```bash
+dmesg
+```
+
+### Scheduling Test
+
+```bash
+nice -n 10 ./cpu_test
+nice -n -5 ./cpu_test
+```
+
+* Compare CPU scheduling behavior
+
+---
+
+##  Expected Output
+
+* Container creation messages
+* Kernel logs showing:
+
+  * Container registration
+  * Soft limit warnings
+  * Hard limit enforcement
+* Process execution inside containers
+* Scheduling differences using `nice`
+
+---
+
+##  Concepts Demonstrated
+
+* Process isolation using `clone()`
+* PID namespaces
+* Kernel module programming
+* IOCTL communication
+* Memory management in OS
+* CPU scheduling
+* Inter-process communication
+
+---
+
+## Project Structure
+
+```
+engine.c
+monitor.c
+monitor_ioctl.h
+Makefile
+README.md
+mem_test.c
+cpu_test.c
+logs/
+monitor.ko
+engine
+```
+
+---
+
+##  Notes
+
+* Kernel module may show a "signature verification failed" warning — this is normal in virtual machines.
+* Root privileges (`sudo`) are required for module loading and container execution.
+
+---
+
+## Conclusion
+
+This project successfully demonstrates the design and implementation of a minimal container runtime with kernel-level monitoring. It highlights practical applications of operating system concepts such as isolation, resource control, and scheduling.
+
+---
