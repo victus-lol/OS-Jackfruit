@@ -1,206 +1,215 @@
-# Mini Container Runtime with Kernel Memory Monitoring
+#  OS-Jackfruit: Container Runtime & Memory Monitor
 
 ##  Overview
 
-This project implements a lightweight container runtime in Linux using low-level system calls and a kernel module. It demonstrates key operating system concepts such as process isolation, inter-process communication, scheduling, and kernel-level resource monitoring.
+OS-Jackfruit is a lightweight container runtime and monitoring system built using **user-space scheduling** and a **Linux Kernel Module (LKM)**. It demonstrates core Operating Systems concepts such as:
 
-The system allows multiple containers to run concurrently under a supervisor while enforcing memory limits using a Loadable Kernel Module (LKM).
+* Process management and scheduling
+* Containerization using namespaces (basic runtime model)
+* Kernel ↔ user-space communication via IOCTL
+* Memory monitoring using a kernel module
 
 ---
 
-##  Project Components
+##  Project Structure
 
-### 1. User-Space Runtime
-
-* **engine.c**
-
-  * Implements container creation using `clone()`
-  * Supports execution of commands inside containers
-  * Provides CLI interface (`start`, `ps`, `logs`, `stop`)
-  * Communicates with kernel module using `ioctl`
-
-### 2. Kernel-Space Monitor
-
-* **monitor.c**
-
-  * Loadable Kernel Module (LKM)
-  * Tracks memory usage of containers
-  * Enforces:
-
-    * Soft memory limits (warning)
-    * Hard memory limits (process termination)
-
-### 3. Shared Interface
-
-* **monitor_ioctl.h**
-
-  * Defines IOCTL commands and data structures
-  * Enables communication between user-space and kernel-space
-
-### 4. Workload Programs
-
-* **mem_test.c**
-
-  * Continuously allocates memory
-  * Used to trigger soft and hard memory limits
-
-* **cpu_test.c**
-
-  * CPU-intensive loop
-  * Used for scheduling experiments
-
-### 5. Build System
-
-* **Makefile**
-
-  * Compiles both user-space and kernel-space components using a single command
+```
+OS-Jackfruit/
+│
+├── boilerplate/
+│   ├── engine.c              # User-space container runtime & CLI
+│   ├── monitor.c             # Kernel module for memory monitoring
+│   ├── monitor_ioctl.h       # Shared IOCTL definitions
+│   ├── cpu_hog.c             # CPU stress workload
+│   ├── memory_hog.c          # Memory stress workload
+│   ├── io_pulse.c            # I/O workload
+│   ├── Makefile              # Build system
+│   └── environment-check.sh  # Environment validation script
+│
+├── README.md
+├── project-guide.md
+```
 
 ---
 
 ##  Features
 
-* Lightweight container creation using Linux namespaces
-* Multiple container execution
-* Supervisor-based management
-* Kernel-level memory monitoring
-* Soft and hard memory enforcement
-* IOCTL-based communication
-* Logging support
-* Scheduling experiments using `nice`
+###  Container Runtime (`engine`)
+
+* CLI-based container manager
+* Supports:
+
+  * `supervisor` mode (daemon)
+  * `run`, `start`, `stop`, `ps`, `logs`
+* Uses process isolation concepts
+* Can enforce resource limits (extendable)
+
+---
+
+###  Kernel Module (`monitor`)
+
+* Linux Kernel Module for memory monitoring
+* Communicates with user-space using **IOCTL**
+* Tracks memory usage of processes/containers
+
+---
+
+###  Workloads
+
+Used for testing scheduling and monitoring:
+
+| Program      | Purpose           |
+| ------------ | ----------------- |
+| `cpu_hog`    | High CPU usage    |
+| `memory_hog` | High memory usage |
+| `io_pulse`   | Simulated I/O     |
 
 ---
 
 ##  Build Instructions
+
+### 1️ Navigate to project
+
+```bash
+cd OS-Jackfruit/boilerplate
+```
+
+### 2️ Build user-space programs
 
 ```bash
 make clean
 make
 ```
 
+### 3️ Build kernel module
+
+```bash
+make monitor
+```
+
 ---
 
-##  Execution Steps
+##  Running the Project
 
-### 1. Load Kernel Module
+###  Step 1: Load kernel module
 
 ```bash
 sudo insmod monitor.ko
 ```
 
-### 2. Create Device File (if not already present)
+Check:
 
 ```bash
-grep container_monitor /proc/devices
-sudo mknod /dev/container_monitor c <major_number> 0
-sudo chmod 666 /dev/container_monitor
-```
-
-### 3. Start a Container
-
-```bash
-sudo ./engine start c1 /bin/bash
-```
-
-### 4. Run Multiple Containers
-
-```bash
-sudo ./engine start c2 /bin/ls
-sudo ./engine start c3 /bin/date
-```
-
-### 5. View Kernel Logs
-
-```bash
-dmesg | tail
-```
-
-### 6. Stop Container
-
-```bash
-kill <pid>
+lsmod | grep monitor
 ```
 
 ---
 
-## Testing
-
-### Memory Test
+###  Step 2: Prepare minimal root filesystem
 
 ```bash
-./mem_test
+mkdir -p /tmp/jackfruit-rootfs/bin
+cp /bin/sh /tmp/jackfruit-rootfs/bin/
 ```
-
-* Triggers soft and hard memory limits
-* Observe using:
-
-```bash
-dmesg
-```
-
-### Scheduling Test
-
-```bash
-nice -n 10 ./cpu_test
-nice -n -5 ./cpu_test
-```
-
-* Compare CPU scheduling behavior
 
 ---
 
-##  Expected Output
+###  Step 3: Start supervisor (daemon)
 
-* Container creation messages
-* Kernel logs showing:
+```bash
+sudo ./engine supervisor /tmp/jackfruit-rootfs
+```
 
-  * Container registration
-  * Soft limit warnings
-  * Hard limit enforcement
-* Process execution inside containers
-* Scheduling differences using `nice`
+---
+
+###  Step 4: Run a container (in another terminal)
+
+```bash
+sudo ./engine run c1 /tmp/jackfruit-rootfs /bin/sh
+```
+
+---
+
+###  Step 5: Manage containers
+
+```bash
+sudo ./engine ps
+sudo ./engine logs c1
+sudo ./engine stop c1
+```
+
+---
+
+##  Running Workloads
+
+Example:
+
+```bash
+sudo ./engine run test1 /tmp/jackfruit-rootfs ./cpu_hog
+```
+
+---
+
+##  Cleanup
+
+### Stop containers
+
+```bash
+sudo ./engine stop <id>
+```
+
+### Remove kernel module
+
+```bash
+sudo rmmod monitor
+```
+
+---
+
+##  Common Issues
+
+###  Permission denied
+
+ Run all engine commands with `sudo`
+
+---
+
+###  Module already exists
+
+```bash
+sudo rmmod monitor
+sudo insmod monitor.ko
+```
+
+---
+
+###  Network / Git issues
+
+Ensure VM has internet and DNS configured correctly
 
 ---
 
 ##  Concepts Demonstrated
 
-* Process isolation using `clone()`
-* PID namespaces
-* Kernel module programming
-* IOCTL communication
-* Memory management in OS
-* CPU scheduling
+* Process creation (`fork`, `exec`)
+* Scheduling (Round Robin / control via signals)
 * Inter-process communication
+* Kernel module development
+* IOCTL interface design
+* Basic container runtime architecture
 
 ---
 
-## Project Structure
+##  Learning Outcomes
 
-```
-engine.c
-monitor.c
-monitor_ioctl.h
-Makefile
-README.md
-mem_test.c
-cpu_test.c
-logs/
-monitor.ko
-engine
-```
-<img width="877" height="137" alt="image" src="https://github.com/user-attachments/assets/d3cf2a34-5155-4cdb-9480-0c596145a204" />
+By completing this project, we understand:
 
+* How user-space interacts with the kernel
+* How containers are managed internally
+* How system resources can be monitored and controlled
 
 ---
 
-##  Notes
+##  License
 
-* Kernel module may show a "signature verification failed" warning — this is normal in virtual machines.
-* Root privileges (`sudo`) are required for module loading and container execution.
-
----
-
-## Conclusion
-
-This project successfully demonstrates the design and implementation of a minimal container runtime with kernel-level monitoring. It highlights practical applications of operating system concepts such as isolation, resource control, and scheduling.
-
----
+This project is for academic use.
