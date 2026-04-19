@@ -1,34 +1,48 @@
-solved
-
+# ========================
 # Build artifacts (user-space)
+# ========================
 boilerplate/engine
 boilerplate/memory_hog
 boilerplate/cpu_hog
 boilerplate/io_pulse
 
-# Kernel module build artifacts
+# ========================
+# Kernel module artifacts
+# ========================
 *.ko
 *.o
 *.mod
 *.mod.c
+*.symvers
 Module.symvers
 modules.order
 *.cmd
 .tmp_versions/
 
-# Root filesystems
+# ========================
+# Root filesystems (generated)
+# ========================
 rootfs-base/
 rootfs-*/
 *.tar.gz
 
+# ========================
 # Logs
+# ========================
 *.log
 logs/
 
-# Runtime socket
+# ========================
+# Runtime sockets / temp
+# ========================
 /tmp/mini_runtime.sock
+/tmp/engine*
+/tmp/jackfruit*
 
+# ========================
 # Editor / OS junk
+# ========================
 *.swp
 *~
 .vscode/
+.DS_Store
